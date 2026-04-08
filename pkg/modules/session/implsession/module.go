@@ -122,6 +122,32 @@ func (module *module) CreatePasswordAuthNSession(ctx context.Context, authNProvi
 		return nil, err
 	}
 
+	// For LDAP: if the user doesn't exist locally yet (zero UUID), auto-provision
+	if identity.UserID.IsZero() {
+		newUser, err := types.NewUser(email.String(), email, orgID, types.UserStatusActive)
+		if err != nil {
+			return nil, err
+		}
+
+		signozManagedRole := authtypes.MustGetSigNozManagedRoleFromExistingRole(identity.Role)
+		newUser, err = module.userSetter.GetOrCreateUser(ctx, newUser, user.WithRoleNames([]string{signozManagedRole}))
+		if err != nil {
+			return nil, err
+		}
+
+		userRoles, err := module.userGetter.GetRolesByUserID(ctx, newUser.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(userRoles) == 0 {
+			return nil, errors.New(errors.TypeUnexpected, authtypes.ErrCodeUserRolesNotFound, "no user roles entries found")
+		}
+
+		finalRole := authtypes.SigNozManagedRoleToExistingLegacyRole[userRoles[0].Role.Name]
+		identity = authtypes.NewIdentity(newUser.ID, orgID, newUser.Email, finalRole, authtypes.IdentNProviderTokenizer)
+	}
+
 	return module.tokenizer.CreateToken(ctx, identity, map[string]string{})
 }
 
@@ -210,6 +236,11 @@ func (module *module) getOrgSessionContext(ctx context.Context, org *types.Organ
 
 	if !authDomain.AuthDomainConfig().SSOEnabled {
 		return authtypes.NewOrgSessionContext(org.ID, org.Name).AddPasswordAuthNSupport(authtypes.AuthNProviderEmailPassword), nil
+	}
+
+	// LDAP is a password-based provider, not a callback provider
+	if authDomain.AuthDomainConfig().AuthNProvider == authtypes.AuthNProviderLDAP {
+		return authtypes.NewOrgSessionContext(org.ID, org.Name).AddPasswordAuthNSupport(authtypes.AuthNProviderLDAP), nil
 	}
 
 	provider, err := getProvider[authn.CallbackAuthN](authDomain.AuthDomainConfig().AuthNProvider, module.authNs)

@@ -26,6 +26,23 @@ func (provider *provider) addSessionRoutes(router *mux.Router) error {
 		return err
 	}
 
+	if err := router.Handle("/api/v2/sessions/ldap", handler.New(provider.authZ.OpenAccess(provider.sessionHandler.CreateSessionByLDAP), handler.OpenAPIDef{
+		ID:                  "CreateSessionByLDAP",
+		Tags:                []string{"sessions"},
+		Summary:             "Create session by LDAP",
+		Description:         "This endpoint creates a session for a user using LDAP authentication.",
+		Request:             new(authtypes.PostableLDAPSession),
+		RequestContentType:  "application/json",
+		Response:            new(authtypes.GettableToken),
+		ResponseContentType: "application/json",
+		SuccessStatusCode:   http.StatusOK,
+		ErrorStatusCodes:    []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusNotFound},
+		Deprecated:          false,
+		SecuritySchemes:     []handler.OpenAPISecurityScheme{},
+	})).Methods(http.MethodPost).GetError(); err != nil {
+		return err
+	}
+
 	if err := router.Handle("/api/v2/sessions/context", handler.New(provider.authZ.OpenAccess(provider.sessionHandler.GetSessionContext), handler.OpenAPIDef{
 		ID:                  "GetSessionContext",
 		Tags:                []string{"sessions"},

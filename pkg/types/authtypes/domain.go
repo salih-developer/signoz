@@ -63,6 +63,7 @@ type AuthDomainConfig struct {
 	SAML          *SamlConfig   `json:"samlConfig"`
 	Google        *GoogleConfig `json:"googleAuthConfig"`
 	OIDC          *OIDCConfig   `json:"oidcConfig"`
+	LDAP          *LDAPConfig   `json:"ldapConfig"`
 	RoleMapping   *RoleMapping  `json:"roleMapping"`
 }
 
@@ -175,6 +176,17 @@ func (typ *AuthDomainConfig) UnmarshalJSON(data []byte) error {
 	case AuthNProviderOIDC:
 		if temp.OIDC == nil {
 			return errors.Newf(errors.TypeInvalidInput, ErrCodeAuthDomainInvalidConfig, "oidc config is required")
+		}
+
+	case AuthNProviderLDAP:
+		if temp.LDAP == nil {
+			return errors.Newf(errors.TypeInvalidInput, ErrCodeAuthDomainInvalidConfig, "ldap config is required")
+		}
+		if temp.LDAP.Host == "" {
+			return errors.Newf(errors.TypeInvalidInput, ErrCodeAuthDomainInvalidConfig, "ldap host is required")
+		}
+		if len(temp.LDAP.Domains) == 0 {
+			return errors.Newf(errors.TypeInvalidInput, ErrCodeAuthDomainInvalidConfig, "at least one ldap domain is required")
 		}
 
 	default:

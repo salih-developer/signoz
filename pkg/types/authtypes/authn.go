@@ -20,6 +20,7 @@ var (
 	AuthNProviderSAML          = AuthNProvider{valuer.NewString("saml")}
 	AuthNProviderEmailPassword = AuthNProvider{valuer.NewString("email_password")}
 	AuthNProviderOIDC          = AuthNProvider{valuer.NewString("oidc")}
+	AuthNProviderLDAP          = AuthNProvider{valuer.NewString("ldap")}
 )
 
 type AuthNProvider struct{ valuer.String }

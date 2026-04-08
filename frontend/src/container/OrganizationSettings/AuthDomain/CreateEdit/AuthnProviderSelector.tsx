@@ -1,4 +1,4 @@
-import { GoogleSquareFilled, KeyOutlined } from '@ant-design/icons';
+import { GoogleSquareFilled, KeyOutlined, ClusterOutlined } from '@ant-design/icons';
 import { Button, Typography } from 'antd';
 
 import './CreateEdit.styles.scss';
@@ -28,7 +28,6 @@ function getAuthNProviders(samlEnabled: boolean): AuthNProvider[] {
 			icon: <KeyOutlined style={{ fontSize: '37px' }} />,
 			enabled: samlEnabled,
 		},
-
 		{
 			key: 'oidc',
 			title: 'OIDC Authentication',
@@ -36,6 +35,14 @@ function getAuthNProviders(samlEnabled: boolean): AuthNProvider[] {
 				'Authenticate using OpenID Connect providers like Azure, Active Directory, Okta, or other OIDC compliant solutions',
 			icon: <KeyOutlined style={{ fontSize: '37px' }} />,
 			enabled: samlEnabled,
+		},
+		{
+			key: 'ldap',
+			title: 'LDAP / Active Directory',
+			description:
+				'Authenticate users against an LDAP or Active Directory server',
+			icon: <ClusterOutlined style={{ fontSize: '37px' }} />,
+			enabled: true,
 		},
 	];
 }

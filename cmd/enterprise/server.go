@@ -97,7 +97,7 @@ func runServer(ctx context.Context, config signoz.Config, logger *slog.Logger) e
 		},
 		sqlstoreFactories,
 		signoz.NewTelemetryStoreProviderFactories(),
-		func(ctx context.Context, providerSettings factory.ProviderSettings, store authtypes.AuthNStore, licensing licensing.Licensing) (map[authtypes.AuthNProvider]authn.AuthN, error) {
+		func(ctx context.Context, providerSettings factory.ProviderSettings, store authtypes.AuthNStore, authDomainStore authtypes.AuthDomainStore, licensing licensing.Licensing) (map[authtypes.AuthNProvider]authn.AuthN, error) {
 			samlCallbackAuthN, err := samlcallbackauthn.New(ctx, store, licensing)
 			if err != nil {
 				return nil, err
@@ -108,7 +108,7 @@ func runServer(ctx context.Context, config signoz.Config, logger *slog.Logger) e
 				return nil, err
 			}
 
-			authNs, err := signoz.NewAuthNs(ctx, providerSettings, store, licensing)
+			authNs, err := signoz.NewAuthNs(ctx, providerSettings, store, authDomainStore, licensing)
 			if err != nil {
 				return nil, err
 			}

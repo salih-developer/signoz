@@ -37,6 +37,9 @@ type Handler interface {
 	// Create a session for a user using email and password.
 	CreateSessionByEmailPassword(http.ResponseWriter, *http.Request)
 
+	// Create a session for a user using LDAP.
+	CreateSessionByLDAP(http.ResponseWriter, *http.Request)
+
 	// Create a session for a user using google callback.
 	CreateSessionByGoogleCallback(http.ResponseWriter, *http.Request)
 

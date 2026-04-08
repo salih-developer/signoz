@@ -57,7 +57,33 @@ func (handler *handler) CreateSessionByEmailPassword(rw http.ResponseWriter, req
 		return
 	}
 
+	// Try email_password first; if that fails with user_not_found, try LDAP
 	token, err := handler.module.CreatePasswordAuthNSession(ctx, authtypes.AuthNProviderEmailPassword, body.Email, body.Password, body.OrgID)
+	if err != nil {
+		// Fallback to LDAP if email_password provider fails
+		ldapToken, ldapErr := handler.module.CreatePasswordAuthNSession(ctx, authtypes.AuthNProviderLDAP, body.Email, body.Password, body.OrgID)
+		if ldapErr != nil {
+			// Return the original error if LDAP also fails
+			render.Error(rw, err)
+			return
+		}
+		token = ldapToken
+	}
+
+	render.Success(rw, http.StatusOK, authtypes.NewGettableTokenFromToken(token, handler.module.GetRotationInterval(ctx)))
+}
+
+func (handler *handler) CreateSessionByLDAP(rw http.ResponseWriter, req *http.Request) {
+	ctx, cancel := context.WithTimeout(req.Context(), 15*time.Second)
+	defer cancel()
+
+	body := new(authtypes.PostableLDAPSession)
+	if err := binding.JSON.BindBody(req.Body, body); err != nil {
+		render.Error(rw, err)
+		return
+	}
+
+	token, err := handler.module.CreatePasswordAuthNSession(ctx, authtypes.AuthNProviderLDAP, body.Email, body.Password, body.OrgID)
 	if err != nil {
 		render.Error(rw, err)
 		return

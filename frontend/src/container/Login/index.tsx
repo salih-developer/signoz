@@ -5,6 +5,7 @@ import { Form, Input, Select, Typography } from 'antd';
 import getVersion from 'api/v1/version/get';
 import get from 'api/v2/sessions/context/get';
 import post from 'api/v2/sessions/email_password/post';
+import ldapPost from 'api/v2/sessions/ldap/post';
 import afterLogin from 'AppRoutes/utils';
 import AuthError from 'components/AuthError/AuthError';
 import ROUTES from 'constants/routes';
@@ -116,27 +117,35 @@ function Login(): JSX.Element {
 	};
 
 	// post selection of email and session org decide on the authN mechanism to use
-	const isPasswordAuthN = useMemo((): boolean => {
-		if (!sessionsContext) {
-			return false;
+	const passwordAuthNProvider = useMemo((): string | null => {
+		if (!sessionsContext || !sessionsOrgId) {
+			return null;
 		}
 
-		if (!sessionsOrgId) {
-			return false;
-		}
-
-		let isPasswordAuthN = false;
-		sessionsContext.orgs.forEach((orgSession) => {
+		for (const orgSession of sessionsContext.orgs) {
 			if (
 				orgSession.id === sessionsOrgId &&
 				orgSession.authNSupport?.password?.length > 0
 			) {
-				isPasswordAuthN = true;
+				return orgSession.authNSupport.password[0].provider;
 			}
-		});
+		}
 
-		return isPasswordAuthN || isPasswordAuthNEnabled;
-	}, [sessionsContext, sessionsOrgId, isPasswordAuthNEnabled]);
+		return null;
+	}, [sessionsContext, sessionsOrgId]);
+
+	const isPasswordAuthN = useMemo((): boolean => {
+		if (isPasswordAuthNEnabled) {
+			return true;
+		}
+
+		return passwordAuthNProvider !== null;
+	}, [passwordAuthNProvider, isPasswordAuthNEnabled]);
+
+	const isLDAPAuthN = useMemo(
+		(): boolean => passwordAuthNProvider === 'ldap',
+		[passwordAuthNProvider],
+	);
 
 	const isCallbackAuthN = useMemo((): boolean => {
 		if (!sessionsContext) {
@@ -197,15 +206,16 @@ function Login(): JSX.Element {
 
 				const password = form.getFieldValue('password');
 
-				const createSessionEmailPasswordResponse = await post({
+				const loginFn = isLDAPAuthN ? ldapPost : post;
+				const createSessionResponse = await loginFn({
 					email,
 					password,
 					orgId: sessionsOrgId,
 				});
 
 				afterLogin(
-					createSessionEmailPasswordResponse.data.accessToken,
-					createSessionEmailPasswordResponse.data.refreshToken,
+					createSessionResponse.data.accessToken,
+					createSessionResponse.data.refreshToken,
 				);
 			}
 			if (isCallbackAuthN) {
@@ -426,7 +436,7 @@ function Login(): JSX.Element {
 							className="login-submit-btn"
 							suffix={<ArrowRight />}
 						>
-							Sign in with Password
+							{isLDAPAuthN ? 'Sign in with LDAP' : 'Sign in with Password'}
 						</Button>
 					)}
 				</div>
