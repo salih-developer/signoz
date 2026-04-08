@@ -1,0 +1,126 @@
+##############################################################
+# LDAP Auth Domain Init Job
+#
+# Run after signoz-ldap pod is healthy:
+#   kubectl apply -f signoz-ldap-init-job.yaml -n signoz
+#
+# This job creates the LDAP auth domain via the SigNoz API.
+# Safe to re-run — skips if domain already exists.
+##############################################################
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: signoz-ldap-init
+  namespace: signoz
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init-ldap
+          image: curlimages/curl:latest
+          env:
+            - name: SIGNOZ_API
+              value: "http://signoz-ldap:8080"
+            - name: ADMIN_EMAIL
+              valueFrom:
+                configMapKeyRef:
+                  name: signoz-ldap-config
+                  key: admin-email
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: signoz-ldap-secret
+                  key: admin-password
+            - name: LDAP_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: signoz-ldap-config
+                  key: ldap-host
+            - name: LDAP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: signoz-ldap-config
+                  key: ldap-port
+            - name: LDAP_USE_TLS
+              valueFrom:
+                configMapKeyRef:
+                  name: signoz-ldap-config
+                  key: ldap-use-tls
+            - name: LDAP_INSECURE_SKIP_VERIFY
+              valueFrom:
+                configMapKeyRef:
+                  name: signoz-ldap-config
+                  key: ldap-insecure-skip-verify
+            - name: LDAP_AD_DOMAINS
+              valueFrom:
+                configMapKeyRef:
+                  name: signoz-ldap-config
+                  key: ldap-ad-domains
+            - name: LDAP_EMAIL_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: signoz-ldap-config
+                  key: ldap-email-domain
+            - name: LDAP_BASE_DN
+              valueFrom:
+                configMapKeyRef:
+                  name: signoz-ldap-config
+                  key: ldap-base-dn
+            - name: LDAP_USER_SEARCH_FILTER
+              valueFrom:
+                configMapKeyRef:
+                  name: signoz-ldap-config
+                  key: ldap-user-search-filter
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Waiting for SigNoz API..."
+              until curl -sf ${SIGNOZ_API}/api/v1/health > /dev/null 2>&1; do
+                sleep 2
+              done
+
+              echo "Logging in..."
+              CONTEXT=$(curl -sf "${SIGNOZ_API}/api/v2/sessions/context?email=${ADMIN_EMAIL}&ref=${SIGNOZ_API}")
+              ORG_ID=$(echo "$CONTEXT" | sed 's/.*"id":"\([^"]*\)".*/\1/')
+              echo "OrgID: $ORG_ID"
+
+              TOKEN_RESP=$(curl -sf -X POST ${SIGNOZ_API}/api/v2/sessions/email_password \
+                -H 'Content-Type: application/json' \
+                -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\",\"orgId\":\"${ORG_ID}\"}")
+              TOKEN=$(echo "$TOKEN_RESP" | sed 's/.*"accessToken":"\([^"]*\)".*/\1/')
+
+              # Check existing
+              DOMAINS=$(curl -sf ${SIGNOZ_API}/api/v1/domains -H "Authorization: Bearer $TOKEN")
+              if echo "$DOMAINS" | grep -q "${LDAP_EMAIL_DOMAIN}"; then
+                echo "LDAP domain ${LDAP_EMAIL_DOMAIN} already exists."
+                exit 0
+              fi
+
+              echo "Creating LDAP auth domain for ${LDAP_EMAIL_DOMAIN}..."
+              curl -sf -X POST ${SIGNOZ_API}/api/v1/domains \
+                -H 'Content-Type: application/json' \
+                -H "Authorization: Bearer $TOKEN" \
+                -d "{
+                  \"name\": \"${LDAP_EMAIL_DOMAIN}\",
+                  \"config\": {
+                    \"ssoEnabled\": true,
+                    \"ssoType\": \"ldap\",
+                    \"ldapConfig\": {
+                      \"host\": \"${LDAP_HOST}\",
+                      \"port\": ${LDAP_PORT},
+                      \"useTLS\": ${LDAP_USE_TLS},
+                      \"insecureSkipVerify\": ${LDAP_INSECURE_SKIP_VERIFY},
+                      \"domains\": [${LDAP_AD_DOMAINS}],
+                      \"baseDN\": \"${LDAP_BASE_DN}\",
+                      \"userSearchFilter\": \"${LDAP_USER_SEARCH_FILTER}\",
+                      \"emailAttribute\": \"\",
+                      \"nameAttribute\": \"\"
+                    }
+                  }
+                }"
+              echo ""
+              echo "LDAP configuration complete!"

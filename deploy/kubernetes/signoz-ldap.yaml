@@ -1,0 +1,150 @@
+##############################################################
+# SigNoz with LDAP - Kubernetes Deployment
+#
+# Prerequisites:
+#   - ClickHouse and Zookeeper already running in the cluster
+#   - OTel Collector deployed
+#
+# Usage:
+#   1. Edit the ConfigMap/Secret values below
+#   2. kubectl apply -f signoz-ldap.yaml -n signoz
+#   3. After pod is running, run the init job:
+#      kubectl apply -f signoz-ldap-init-job.yaml -n signoz
+##############################################################
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: signoz-ldap-secret
+  namespace: signoz
+type: Opaque
+stringData:
+  # Change these in production!
+  jwt-secret: "change-me-in-production"
+  admin-password: "SetAdmin2024!@"
+  clickhouse-dsn: "tcp://signoz-clickhouse:9000/?username=admin&password=27ff0399-0d3a-4bd8-919d-17c2181e6fb9"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: signoz-ldap-config
+  namespace: signoz
+data:
+  # Admin
+  admin-email: "admin@setyazilim.com"
+  org-name: "SETYazilim"
+
+  # LDAP Settings
+  ldap-host: "172.16.1.172"
+  ldap-port: "389"
+  ldap-use-tls: "false"
+  ldap-insecure-skip-verify: "false"
+  ldap-ad-domains: '"SETYAZILIM","SETSOFTWARE"'
+  ldap-email-domain: "setyazilim.com"
+  ldap-base-dn: ""
+  ldap-user-search-filter: ""
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: signoz-ldap
+  namespace: signoz
+  labels:
+    app: signoz-ldap
+spec:
+  serviceName: signoz-ldap
+  replicas: 1
+  selector:
+    matchLabels:
+      app: signoz-ldap
+  template:
+    metadata:
+      labels:
+        app: signoz-ldap
+    spec:
+      containers:
+        - name: signoz
+          image: signoz-ldap:latest
+          imagePullPolicy: Never
+          args: ["server"]
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SIGNOZ_INSTRUMENTATION_LOGS_LEVEL
+              value: "info"
+            - name: SIGNOZ_SQLSTORE_SQLITE_PATH
+              value: "/var/lib/signoz/signoz.db"
+            - name: SIGNOZ_WEB_ENABLED
+              value: "true"
+            - name: SIGNOZ_ALERTMANAGER_PROVIDER
+              value: "signoz"
+            - name: SIGNOZ_TELEMETRYSTORE_PROVIDER
+              value: "clickhouse"
+            - name: SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_CLUSTER
+              value: "cluster"
+            - name: SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: signoz-ldap-secret
+                  key: clickhouse-dsn
+            - name: SIGNOZ_TOKENIZER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: signoz-ldap-secret
+                  key: jwt-secret
+            - name: SIGNOZ_USER_ROOT_ENABLED
+              value: "true"
+            - name: SIGNOZ_USER_ROOT_EMAIL
+              valueFrom:
+                configMapKeyRef:
+                  name: signoz-ldap-config
+                  key: admin-email
+            - name: SIGNOZ_USER_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: signoz-ldap-secret
+                  key: admin-password
+            - name: SIGNOZ_USER_ROOT_ORG_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: signoz-ldap-config
+                  key: org-name
+          volumeMounts:
+            - name: sqlite-data
+              mountPath: /var/lib/signoz
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: sqlite-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: signoz-ldap
+  namespace: signoz
+spec:
+  type: NodePort
+  selector:
+    app: signoz-ldap
+  ports:
+    - port: 8080
+      targetPort: http
+      nodePort: 30690
+      name: http
